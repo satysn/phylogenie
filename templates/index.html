@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhyloGenie</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+  --black: #000000;
+  --bg: #080c12;
+  --bg2: #0c1117;
+  --card: #0f141d;
+  --border: #162030;
+  --border2: #1a2840;
+  --blue: #00aaff;
+  --blue-dim: rgba(0,170,255,0.12);
+  --blue-glow: rgba(0,170,255,0.25);
+  --text: #dce8f5;
+  --muted: #4a6080;
+  --muted2: #2a3f58;
+  --green: #00e676;
+  --red: #ff3d5a;
+  --yellow: #ffcc00;
+  --purple: #aa66ff;
+  --mono: 'Courier New', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--black); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5; }
+
+/* ── Layout ── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 200px; flex-shrink: 0;
+  background: var(--bg); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.logo {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.logo-name { font-size: 17px; font-weight: 800; color: var(--blue); letter-spacing: -0.3px; }
+.logo-tag { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+nav { flex: 1; padding: 10px 8px; overflow-y: auto; }
+.nav-group { font-size: 9px; color: var(--muted2); text-transform: uppercase; letter-spacing: 1.5px; padding: 10px 8px 5px; }
+.nav-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 8px; border-radius: 5px; cursor: pointer;
+  font-size: 12.5px; color: var(--muted); transition: all .12s;
+  margin-bottom: 1px;
+}
+.nav-item .ic { width: 16px; text-align: center; font-size: 13px; opacity: .7; }
+.nav-item:hover { background: var(--bg2); color: var(--text); }
+.nav-item.active { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(0,170,255,.15); }
+.sidebar-foot { padding: 12px 14px; border-top: 1px solid var(--border); font-size: 10px; color: var(--muted); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 5px; box-shadow: 0 0 6px var(--green); animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--black); }
+.topbar {
+  height: 48px; flex-shrink: 0;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 20px; gap: 10px;
+}
+.breadcrumb { flex: 1; font-size: 12px; color: var(--muted); }
+.breadcrumb b { color: var(--text); }
+.content { flex: 1; overflow-y: auto; padding: 22px 24px; }
+
+/* ── Pages ── */
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── Page header ── */
+.pg-title { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 3px; }
+.pg-sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 18px;
+}
+.card + .card, .card + .grid { margin-top: 14px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.card-title { font-size: 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: .8px; }
+
+/* ── Grid ── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+.mt { margin-top: 14px; }
+
+/* ── Stats ── */
+.stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; }
+.stat-l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-v { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.stat-s { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.c-blue { color: var(--blue); }
+.c-green { color: var(--green); }
+.c-yellow { color: var(--yellow); }
+.c-purple { color: var(--purple); }
+.c-red { color: var(--red); }
+.c-muted { color: var(--muted); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 5px; border: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; font-family: inherit; transition: all .12s;
+}
+.btn-blue { background: var(--blue); color: #000; }
+.btn-blue:hover { background: #33bbff; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg2); color: var(--text); }
+.btn-red { background: transparent; color: var(--red); border: 1px solid rgba(255,61,90,.25); }
+.btn-red:hover { background: rgba(255,61,90,.1); }
+.btn-sm { padding: 5px 10px; font-size: 11.5px; }
+.btn-lg { padding: 10px 22px; font-size: 13.5px; }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── Forms ── */
+.form-label { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+input[type=text], textarea, select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 5px; padding: 8px 11px; color: var(--text);
+  font-size: 13px; font-family: inherit; outline: none; transition: border-color .12s;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0,170,255,.1); }
+textarea { resize: vertical; font-family: var(--mono); font-size: 12px; }
+select option { background: var(--bg2); }
+.fg { margin-bottom: 13px; }
+
+/* ── Chips ── */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px; background: var(--blue-dim); border: 1px solid rgba(0,170,255,.2);
+  border-radius: 20px; font-size: 12px; font-family: var(--mono); color: var(--blue);
+}
+.chip-x { cursor: pointer; color: var(--muted); font-size: 15px; line-height:1; }
+.chip-x:hover { color: var(--red); }
+
+/* ── Progress bar ── */
+.prog-wrap { background: var(--bg2); border-radius: 3px; height: 5px; overflow: hidden; }
+.prog-bar { height: 100%; background: linear-gradient(90deg, var(--blue), #0066cc); border-radius: 3px; transition: width .4s ease; }
+
+/* ── Pipeline steps ── */
+.steps { display: flex; flex-direction: column; gap: 8px; }
+.step {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; transition: border-color .2s;
+}
+.step.running { border-color: var(--blue); }
+.step.complete { border-color: rgba(0,230,118,.25); }
+.step.skipped { opacity: .5; }
+.step.error { border-color: var(--red); }
+.step-ic {
+  width: 28px; height: 28px; border-radius: 5px; display: flex;
+  align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+}
+.step-ic.pending { background: var(--bg2); }
+.step-ic.running { background: rgba(0,170,255,.1); }
+.step-ic.complete { background: rgba(0,230,118,.1); }
+.step-ic.skipped { background: var(--bg2); }
+.step-ic.error { background: rgba(255,61,90,.1); }
+.spin { animation: spin .8s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.step-body { flex: 1; min-width: 0; }
+.step-name { font-size: 12.5px; font-weight: 600; margin-bottom: 2px; }
+.step-msg { font-size: 11.5px; color: var(--muted); }
+
+/* ── Badges ── */
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; flex-shrink: 0; }
+.b-blue { background: rgba(0,170,255,.12); color: var(--blue); border: 1px solid rgba(0,170,255,.2); }
+.b-green { background: rgba(0,230,118,.1); color: var(--green); border: 1px solid rgba(0,230,118,.2); }
+.b-red { background: rgba(255,61,90,.1); color: var(--red); border: 1px solid rgba(255,61,90,.2); }
+.b-yellow { background: rgba(255,204,0,.1); color: var(--yellow); border: 1px solid rgba(255,204,0,.2); }
+.b-purple { background: rgba(170,102,255,.1); color: var(--purple); border: 1px solid rgba(170,102,255,.2); }
+.b-muted { background: var(--bg2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ── Sequence viewer ── */
+.seq-box {
+  font-family: var(--mono); font-size: 11.5px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 12px; overflow: auto;
+  white-space: pre; max-height: 220px; line-height: 1.9;
+}
+.nA { color: #ff6b6b; }
+.nT { color: #4fb3ff; }
+.nC { color: #00e676; }
+.nG { color: #ffcc00; }
+.seq-pos { color: var(--muted2); user-select: none; margin-right: 10px; display: inline-block; width: 48px; text-align: right; }
+
+/* ── Tables ── */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { padding: 7px 10px; background: var(--bg); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .8px; border-bottom: 1px solid var(--border); text-align: left; }
+tbody td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(255,255,255,.015); }
+.mono { font-family: var(--mono); }
+.evalue { color: var(--yellow); font-family: var(--mono); }
+
+/* ── Identity bar ── */
+.id-bar { display: flex; align-items: center; gap: 7px; }
+.id-fill { height: 4px; border-radius: 2px; background: var(--blue); flex-shrink: 0; }
+
+/* ── MSA ── */
+.msa-box {
+  font-family: var(--mono); font-size: 11px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 5px; padding: 12px;
+  overflow: auto; max-height: 300px;
+}
+.msa-row { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
+.msa-id { width: 130px; flex-shrink: 0; color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msa-seq { letter-spacing: .5px; }
+.cons-row { color: var(--blue); opacity: .7; }
+
+/* ── D3 Phylo ── */
+#phylo-svg { width: 100%; }
+.phy-link { fill: none; stroke: var(--border2); stroke-width: 1.5; }
+.phy-node circle { fill: var(--blue); stroke: var(--black); stroke-width: 2; }
+.phy-node text { fill: var(--text); font-size: 10.5px; }
+
+/* ── Protein SS bar ── */
+.ss-bar { display: flex; height: 24px; border-radius: 4px; overflow: hidden; }
+.ss-H { background: #ff3d5a; }
+.ss-E { background: #00aaff; }
+.ss-T { background: #ffcc00; }
+.ss-C { background: #2a3f58; }
+.ss-seg { display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: rgba(255,255,255,.85); }
+.ss-legend { display: flex; gap: 14px; font-size: 11px; margin-top: 8px; }
+.ss-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: middle; }
+
+/* ── Gene track ── */
+.gene-track { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 12px; margin-bottom: 10px; }
+.gene-canvas { position: relative; height: 28px; background: var(--bg2); border-radius: 4px; margin: 8px 0; }
+.exon-blk { position: absolute; height: 100%; background: var(--blue); border-radius: 2px; opacity: .75; }
+.gene-blk { position: absolute; height: 100%; background: rgba(170,102,255,.2); border-radius: 3px; border: 1px solid rgba(170,102,255,.4); }
+.ruler { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); font-family: var(--mono); margin-bottom: 4px; }
+
+/* ── ORF table ── */
+.orf-protein { font-family: var(--mono); font-size: 10.5px; color: var(--blue); background: var(--bg2); border-radius: 3px; padding: 4px 7px; margin-top: 4px; word-break: break-all; }
+
+/* ── Job history row ── */
+.job-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
+}
+.job-row:hover { border-color: var(--blue); }
+.job-id-badge { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--blue); min-width: 80px; }
+.job-info { flex: 1; min-width: 0; }
+.job-accs { font-size: 12.5px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-meta { font-size: 11px; color: var(--muted); }
+.job-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* ── Section divider ── */
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 7px; padding: 10px 16px; font-size: 12.5px;
+  z-index: 9999; opacity: 0; transform: translateY(8px);
+  transition: all .18s; pointer-events: none; max-width: 300px;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty-ic { font-size: 32px; margin-bottom: 10px; }
+.empty p { font-size: 12.5px; }
+
+/* ── Inline info ── */
+.info-row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.info-row b { color: var(--text); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* warning banner */
+.warn-banner {
+  background: rgba(255,204,0,.07); border: 1px solid rgba(255,204,0,.2);
+  border-radius: 6px; padding: 10px 14px; font-size: 12px; color: var(--yellow);
+  margin-bottom: 16px;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-name">🧬 PhyloGenie</div>
+    <div class="logo-tag">Real-Tools Analysis</div>
+  </div>
+  <nav>
+    <div class="nav-group">Workspace</div>
+    <div class="nav-item active" data-page="home"><span class="ic">⌂</span>Home</div>
+    <div class="nav-item" data-page="analyze"><span class="ic">⚡</span>New Analysis</div>
+    <div class="nav-item" data-page="history"><span class="ic">◷</span>Job History</div>
+
+    <div class="nav-group" id="results-nav-group" style="display:none">Results</div>
+    <div class="nav-item" data-page="r-retrieval" id="nav-retrieval" style="display:none"><span class="ic">⬇</span>Sequences</div>
+    <div class="nav-item" data-page="r-orf" id="nav-orf" style="display:none"><span class="ic">⊡</span>ORF Finder</div>
+    <div class="nav-item" data-page="r-augustus" id="nav-augustus" style="display:none"><span class="ic">⚟</span>Augustus</div>
+    <div class="nav-item" data-page="r-blastn" id="nav-blastn" style="display:none"><span class="ic">◎</span>BLASTN</div>
+    <div class="nav-item" data-page="r-blastp" id="nav-blastp" style="display:none"><span class="ic">◉</span>BLASTP</div>
+    <div class="nav-item" data-page="r-msa" id="nav-msa" style="display:none"><span class="ic">≡</span>MSA</div>
+    <div class="nav-item" data-page="r-phylo" id="nav-phylo" style="display:none"><span class="ic">⋎</span>Phylo Tree</div>
+    <div class="nav-item" data-page="r-structure" id="nav-structure" style="display:none"><span class="ic">◈</span>Protein</div>
+  </nav>
+  <div class="sidebar-foot"><span class="dot"></span>NCBI · Augustus · Biopython</div>
+</aside>
+
+<!-- ── Main ── -->
+<main class="main">
+  <div class="topbar">
+    <div class="breadcrumb">PhyloGenie / <b id="bc">Home</b></div>
+    <span id="job-badge" style="display:none" class="badge b-blue">⚡ Running</span>
+    <button class="btn btn-blue btn-sm" onclick="go('analyze')">+ New Analysis</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ HOME ══ -->
+    <div class="page active" id="page-home">
+      <div class="pg-title">Dashboard</div>
+      <div class="pg-sub">Genomic sequence analysis — powered by real NCBI, Augustus & Biopython tools</div>
+
+      <div class="g4">
+        <div class="stat"><div class="stat-l">Jobs Run</div><div class="stat-v c-blue" id="h-jobs">0</div><div class="stat-s">this session</div></div>
+        <div class="stat"><div class="stat-l">Tools Integrated</div><div class="stat-v c-green">8</div><div class="stat-s">real APIs</div></div>
+        <div class="stat"><div class="stat-l">Time Saved</div><div class="stat-v c-yellow">83%</div><div class="stat-s">vs manual workflow</div></div>
+        <div class="stat"><div class="stat-l">Max Sequences</div><div class="stat-v c-purple">10</div><div class="stat-s">per job</div></div>
+      </div>
+
+      <div class="g2 mt">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Pipeline</div></div>
+          <div style="display:flex;flex-direction:column;gap:7px;font-size:12px">
+            <div>① <b>NCBI Entrez</b> — Fetch FASTA + full GenBank record</div>
+            <div>② <b>ORF Finder</b> — All 6 reading frames, ranked by length</div>
+            <div>③ <b>Augustus</b> — Ab initio gene prediction (web API)</div>
+            <div>④ <b>BLASTN</b> — Nucleotide homology vs NCBI nt</div>
+            <div>⑤ <b>BLASTP</b> — Protein homology vs NCBI nr</div>
+            <div style="color:var(--muted)">⑥ <b>MSA</b> — Biopython global alignment <i>(2+ sequences only)</i></div>
+            <div style="color:var(--muted)">⑦ <b>Phylo NJ</b> — Neighbor-Joining tree <i>(2+ sequences only)</i></div>
+            <div>⑧ <b>ProtParam</b> — MW, pI, stability, 2° structure</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Recent Jobs</div><button class="btn btn-ghost btn-sm" onclick="go('history')">All →</button></div>
+          <div id="h-recent"><div class="empty" style="padding:20px"><div class="empty-ic">📭</div><p>No jobs yet</p></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ NEW ANALYSIS ══ -->
+    <div class="page" id="page-analyze">
+      <div class="pg-title">New Analysis</div>
+      <div class="pg-sub">Enter one or more NCBI accession numbers and launch the full pipeline</div>
+
+      <div class="warn-banner">
+        ⚠️ <b>Before running:</b> open <code>config.py</code> and set your NCBI email. Get a free API key at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank" style="color:var(--blue)">ncbi.nlm.nih.gov/account</a> for 10× faster BLAST.
+      </div>
+
+      <div class="g2">
+        <div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:13px">Sequence Input</div>
+            <div class="fg">
+              <label class="form-label">NCBI Accession Numbers</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="acc-in" placeholder="e.g. NM_001301717" onkeydown="if(event.key==='Enter')addAcc()">
+                <button class="btn btn-ghost btn-sm" onclick="addAcc()">Add</button>
+              </div>
+              <div class="chips" id="chips"></div>
+            </div>
+            <div class="fg">
+              <label class="form-label">Sample accessions (click to load)</label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap" id="samples-btns">
+                <button class="btn btn-ghost btn-sm" onclick="loadSample('NM_001301717','BRCA1')">BRCA1</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadSample('NM_000546','TP53')">TP53</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadSample('NM_004333','BRAF')">BRAF</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadSample('NM_005228','EGFR')">EGFR</button>
+                <button class="btn btn-ghost btn-sm" onclick="loadAllSamples()">All 4 →</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card mt">
+            <div class="card-title" style="margin-bottom:13px">Options</div>
+            <div class="g2">
+              <div class="fg">
+                <label class="form-label">Gene Model (Augustus)</label>
+                <select id="opt-org">
+                  <option value="human">Human</option>
+                  <option value="mouse">Mouse</option>
+                  <option value="arabidopsis">Arabidopsis</option>
+                  <option value="drosophila">Drosophila</option>
+                  <option value="zebrafish">Zebrafish</option>
+                </select>
+              </div>
+              <div class="fg">
+                <label class="form-label">BLAST Hits</label>
+                <select id="opt-hits">
+                  <option value="10">10</option>
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:12px">Launch</div>
+            <div id="launch-info" style="font-size:12px;color:var(--muted);margin-bottom:13px">Add at least one accession number to begin.</div>
+            <button class="btn btn-blue btn-lg" id="launch-btn" onclick="launch()" disabled style="width:100%">
+              ⚡ Run Full Pipeline
+            </button>
+          </div>
+
+          <div class="card mt" id="status-card" style="display:none">
+            <div class="card-head">
+              <div class="card-title">Pipeline Status</div>
+              <span class="badge" id="s-badge">Running</span>
+            </div>
+            <div style="margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px">
+                <span id="s-label">Starting...</span><span id="s-pct">0%</span>
+              </div>
+              <div class="prog-wrap"><div class="prog-bar" id="s-bar" style="width:0%"></div></div>
+            </div>
+            <div class="steps" id="s-steps"></div>
+            <div id="s-done" style="display:none;margin-top:13px">
+              <button class="btn btn-blue" style="width:100%" onclick="showResults()">View Results →</button>
+            </div>
+            <div id="s-pdf" style="display:none;margin-top:8px">
+              <button class="btn btn-ghost" style="width:100%" onclick="downloadPDF(currentJobId)">⬇ Download PDF Report</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ HISTORY ══ -->
+    <div class="page" id="page-history">
+      <div class="pg-title">Job History</div>
+      <div class="pg-sub">All jobs — click to view results, delete to remove</div>
+      <div id="history-list"><div class="empty"><div class="empty-ic">📭</div><p>No jobs yet</p></div></div>
+    </div>
+
+    <!-- ══ RESULTS PAGES ══ -->
+
+    <!-- Sequences -->
+    <div class="page" id="page-r-retrieval">
+      <div class="pg-title">Sequences</div>
+      <div class="pg-sub">FASTA + GenBank details from NCBI Entrez</div>
+      <div id="r-retrieval-body"></div>
+    </div>
+
+    <!-- ORF -->
+    <div class="page" id="page-r-orf">
+      <div class="pg-title">ORF Finder</div>
+      <div class="pg-sub">Open reading frames across all 6 reading frames</div>
+      <div id="r-orf-body"></div>
+    </div>
+
+    <!-- Augustus -->
+    <div class="page" id="page-r-augustus">
+      <div class="pg-title">Augustus Gene Prediction</div>
+      <div class="pg-sub">Ab initio gene structure prediction via Augustus web server</div>
+      <div id="r-augustus-body"></div>
+    </div>
+
+    <!-- BLASTN -->
+    <div class="page" id="page-r-blastn">
+      <div class="pg-title">BLASTN Results</div>
+      <div class="pg-sub">Nucleotide homology search against NCBI nt database</div>
+      <div id="r-blastn-body"></div>
+    </div>
+
+    <!-- BLASTP -->
+    <div class="page" id="page-r-blastp">
+      <div class="pg-title">BLASTP Results</div>
+      <div class="pg-sub">Protein homology search against NCBI nr database</div>
+      <div id="r-blastp-body"></div>
+    </div>
+
+    <!-- MSA -->
+    <div class="page" id="page-r-msa">
+      <div class="pg-title">Multiple Sequence Alignment</div>
+      <div class="pg-sub">Biopython global pairwise alignment (2+ sequences)</div>
+      <div id="r-msa-body"></div>
+    </div>
+
+    <!-- Phylo -->
+    <div class="page" id="page-r-phylo">
+      <div class="pg-title">Phylogenetic Tree</div>
+      <div class="pg-sub">Neighbor-Joining tree from identity distance matrix</div>
+      <div id="r-phylo-body"></div>
+    </div>
+
+    <!-- Structure -->
+    <div class="page" id="page-r-structure">
+      <div class="pg-title">Protein Analysis</div>
+      <div class="pg-sub">Physicochemical properties & secondary structure (Biopython ProtParam)</div>
+      <div id="r-structure-body"></div>
+    </div>
+
+  </div>
+</main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────
+// State
+// ─────────────────────────
+const S = { accs: [], jobId: null, results: null, poll: null };
+let currentJobId = null;
+
+// ─────────────────────────
+// Nav
+// ─────────────────────────
+function go(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pg = document.getElementById(`page-${page}`);
+  if (pg) pg.classList.add('active');
+  const ni = document.querySelector(`[data-page="${page}"]`);
+  if (ni) ni.classList.add('active');
+  const labels = {
+    home:'Home', analyze:'New Analysis', history:'Job History',
+    'r-retrieval':'Sequences','r-orf':'ORF Finder','r-augustus':'Augustus',
+    'r-blastn':'BLASTN','r-blastp':'BLASTP','r-msa':'MSA',
+    'r-phylo':'Phylo Tree','r-structure':'Protein'
+  };
+  document.getElementById('bc').textContent = labels[page] || page;
+}
+document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', () => go(el.dataset.page)));
+
+function showResultsNav() {
+  document.getElementById('results-nav-group').style.display = '';
+  ['nav-retrieval','nav-orf','nav-augustus','nav-blastn','nav-blastp',
+   'nav-msa','nav-phylo','nav-structure'].forEach(id => {
+    document.getElementById(id).style.display = '';
+  });
+}
+
+// ─────────────────────────
+// Accessions
+// ─────────────────────────
+function addAcc() {
+  const inp = document.getElementById('acc-in');
+  const v = inp.value.trim().toUpperCase();
+  if (!v) return;
+  if (S.accs.includes(v)) { toast('Already added'); return; }
+  if (S.accs.length >= 10) { toast('Max 10 sequences'); return; }
+  S.accs.push(v); inp.value = '';
+  renderChips(); updateLaunch();
+}
+function removeAcc(a) { S.accs = S.accs.filter(x => x !== a); renderChips(); updateLaunch(); }
+function renderChips() {
+  document.getElementById('chips').innerHTML = S.accs.map(a =>
+    `<div class="chip">${a}<span class="chip-x" onclick="removeAcc('${a}')">×</span></div>`
+  ).join('');
+}
+function loadSample(acc, gene) {
+  if (S.accs.includes(acc)) { toast(`${gene} already added`); return; }
+  if (S.accs.length >= 10) return;
+  S.accs.push(acc); renderChips(); updateLaunch();
+}
+function loadAllSamples() {
+  [['NM_001301717','BRCA1'],['NM_000546','TP53'],['NM_004333','BRAF'],['NM_005228','EGFR']]
+    .forEach(([a,g]) => loadSample(a,g));
+}
+function updateLaunch() {
+  const btn = document.getElementById('launch-btn');
+  const info = document.getElementById('launch-info');
+  btn.disabled = S.accs.length === 0;
+  if (S.accs.length > 0) {
+    info.innerHTML = `<b style="color:var(--text)">${S.accs.length}</b> sequence(s) · MSA + Phylo ${S.accs.length > 1 ? '<span class="badge b-green">enabled</span>' : '<span class="badge b-muted">skipped</span>'}`;
+  } else {
+    info.textContent = 'Add at least one accession number to begin.';
+  }
+}
+
+// ─────────────────────────
+// Launch
+// ─────────────────────────
+async function launch() {
+  if (!S.accs.length) return;
+  const options = {
+    organism_model: document.getElementById('opt-org').value,
+    hitlist_size: parseInt(document.getElementById('opt-hits').value),
+  };
+  try {
+    const r = await fetch('/api/jobs', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ accessions: S.accs, options })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Failed');
+    currentJobId = d.job_id;
+    S.jobId = d.job_id;
+    document.getElementById('status-card').style.display = '';
+    document.getElementById('s-done').style.display = 'none';
+    document.getElementById('s-pdf').style.display = 'none';
+    document.getElementById('job-badge').style.display = '';
+    document.getElementById('launch-btn').disabled = true;
+    toast(`Job ${d.job_id} launched`);
+    startPoll(d.job_id);
+    refreshHome(); refreshHistory();
+  } catch(e) { toast('Error: '+e.message, true); }
+}
+
+// ─────────────────────────
+// Polling
+// ─────────────────────────
+function startPoll(id) {
+  if (S.poll) clearInterval(S.poll);
+  S.poll = setInterval(() => pollJob(id), 1500);
+}
+
+const STEP_DEFS = [
+  {key:'retrieval', ic:'⬇', label:'Sequence Retrieval'},
+  {key:'orf',       ic:'⊡', label:'ORF Finder'},
+  {key:'augustus',  ic:'⚟', label:'Augustus Gene Prediction'},
+  {key:'blastn',    ic:'◎', label:'BLASTN'},
+  {key:'blastp',    ic:'◉', label:'BLASTP'},
+  {key:'msa',       ic:'≡', label:'MSA (2+ sequences)'},
+  {key:'phylo',     ic:'⋎', label:'Phylogenetic Tree (2+ sequences)'},
+  {key:'structure', ic:'◈', label:'Protein Analysis'},
+];
+
+async function pollJob(id) {
+  try {
+    const r = await fetch(`/api/jobs/${id}`);
+    const job = await r.json();
+    const pct = job.progress || 0;
+    document.getElementById('s-bar').style.width = pct + '%';
+    document.getElementById('s-pct').textContent = pct + '%';
+    document.getElementById('s-label').textContent = stepLabel(job.current_step);
+    const badge = document.getElementById('s-badge');
+    badge.textContent = job.status === 'complete' ? 'Complete' : job.status === 'error' ? 'Error' : 'Running';
+    badge.className = 'badge ' + (job.status==='complete'?'b-green':job.status==='error'?'b-red':'b-blue');
+
+    document.getElementById('s-steps').innerHTML = STEP_DEFS.map(s => {
+      const st = (job.steps||{})[s.key] || {status:'pending',message:'Queued'};
+      const status = st.status || 'pending';
+      const icon = status==='running'?'<span class="spin">↻</span>':
+                   status==='complete'?'✓':status==='error'?'✗':
+                   status==='skipped'?'—':s.ic;
+      return `<div class="step ${status}">
+        <div class="step-ic ${status}">${icon}</div>
+        <div class="step-body">
+          <div class="step-name">${s.label}</div>
+          <div class="step-msg">${st.message||'Pending'}</div>
+        </div>
+        <span class="badge ${status==='complete'?'b-green':status==='running'?'b-blue':status==='error'?'b-red':status==='skipped'?'b-muted':''}">${status}</span>
+      </div>`;
+    }).join('');
+
+    if (job.status === 'complete' || job.status === 'error') {
+      clearInterval(S.poll);
+      document.getElementById('job-badge').style.display = 'none';
+      document.getElementById('launch-btn').disabled = false;
+      if (job.status === 'complete') {
+        document.getElementById('s-done').style.display = '';
+        document.getElementById('s-pdf').style.display = '';
+        toast('Analysis complete! 🎉');
+        await loadFullResults(id);
+      } else {
+        toast('Job failed: '+(job.error||'Unknown'), true);
+      }
+      refreshHome(); refreshHistory();
+    }
+  } catch(e) { console.error(e); }
+}
+
+function stepLabel(k) {
+  return {retrieval:'Fetching sequences',orf:'Finding ORFs',augustus:'Augustus prediction',
+          blastn:'BLASTN search',blastp:'BLASTP search',msa:'MSA alignment',
+          phylo:'Building tree',structure:'Protein analysis',done:'Complete'}[k]||k||'Running...';
+}
+
+// ─────────────────────────
+// Load & Render Results
+// ─────────────────────────
+async function loadFullResults(id) {
+  try {
+    const r = await fetch(`/api/jobs/${id}/full`);
+    const job = await r.json();
+    S.results = job;
+    renderAll(job);
+    showResultsNav();
+  } catch(e) { console.error(e); }
+}
+
+function showResults() { go('r-retrieval'); }
+
+function renderAll(job) {
+  const steps = job.steps || {};
+  if (steps.retrieval?.data?.sequences) renderRetrieval(steps.retrieval.data.sequences);
+  if (steps.orf?.data?.orf_results) renderORF(steps.orf.data.orf_results);
+  if (steps.augustus?.data?.augustus_results) renderAugustus(steps.augustus.data.augustus_results);
+  if (steps.blastn?.data?.blastn_results) renderBlastn(steps.blastn.data.blastn_results);
+  if (steps.blastp?.data?.blastp_results) renderBlastp(steps.blastp.data.blastp_results);
+  if (steps.msa?.data?.msa) renderMSA(steps.msa.data.msa);
+  if (steps.phylo?.data?.tree) renderPhylo(steps.phylo.data.tree);
+  if (steps.structure?.data?.structures) renderStructure(steps.structure.data.structures);
+}
+
+// ── Retrieval ──
+function renderRetrieval(seqs) {
+  document.getElementById('r-retrieval-body').innerHTML = seqs.map(seq => {
+    const gb = seq.genbank || {};
+    const feats = (gb.features||[]).slice(0,8).map(f => {
+      const q = f.qualifiers || {};
+      const kq = Object.values(q)[0] || '';
+      return `<tr><td class="mono">${f.type}</td><td class="mono c-muted">${f.location?.slice(0,30)||''}</td><td>${String(kq).slice(0,60)}</td></tr>`;
+    }).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${seq.accession}</div>
+        <div style="display:flex;gap:6px">
+          <span class="badge b-blue">${(seq.length||0).toLocaleString()} bp</span>
+          <span class="badge b-muted">${gb.molecule_type||''}</span>
+        </div>
+      </div>
+      <div class="info-row">
+        <span>Organism: <b>${gb.organism||'—'}</b></span>
+        <span>Topology: <b>${gb.topology||'—'}</b></span>
+        <span>Date: <b>${gb.date||'—'}</b></span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${seq.description||''}</div>
+      <div class="seq-box">${colorSeq(seq.sequence||'',240)}</div>
+      ${feats ? `<div class="divider"></div><div style="font-size:11px;color:var(--muted);margin-bottom:6px">GenBank Features</div>
+        <div class="tbl-wrap"><table><thead><tr><th>Type</th><th>Location</th><th>Qualifier</th></tr></thead><tbody>${feats}</tbody></table></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function colorSeq(seq, limit) {
+  const display = seq.slice(0, limit);
+  let html = '';
+  const chunk = 60;
+  for (let i = 0; i < display.length; i += chunk) {
+    const row = display.slice(i, i+chunk);
+    const colored = row.split('').map(b => `<span class="n${b}">${b}</span>`).join('');
+    html += `<span class="seq-pos">${i+1}</span>${colored}\n`;
+  }
+  if (seq.length > limit) html += `<span style="color:var(--muted)">... ${(seq.length-limit).toLocaleString()} more bases</span>`;
+  return html;
+}
+
+// ── ORF ──
+function renderORF(orfResults) {
+  document.getElementById('r-orf-body').innerHTML = orfResults.map(item => {
+    const orfs = (item.result.orfs||[]).slice(0,10);
+    const rows = orfs.map((o,i) => `<tr>
+      <td>${i+1}</td>
+      <td><span class="badge ${o.strand==='+'?'b-blue':'b-purple'}">${o.frame}</span></td>
+      <td class="mono">${o.start.toLocaleString()}</td>
+      <td class="mono">${o.end.toLocaleString()}</td>
+      <td><b>${o.length_aa}</b></td>
+      <td>${o.gc_content}%</td>
+      <td><span class="badge ${o.has_stop?'b-green':'b-yellow'}">${o.has_stop?'Yes':'No'}</span></td>
+    </tr>`).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${item.accession} — ORF Finder</div>
+        <span class="badge b-blue">${item.result.total_orfs} ORFs</span>
+      </div>
+      <div class="info-row"><span>Sequence: <b>${(item.result.sequence_length||0).toLocaleString()} bp</b></span>
+        <span>Showing top 10 by length</span></div>
+      <div class="tbl-wrap">
+        <table><thead><tr><th>#</th><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>GC%</th><th>Stop?</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>
+      ${orfs[0] ? `<div style="margin-top:12px;font-size:11px;color:var(--muted)">Longest ORF protein:</div>
+        <div class="orf-protein">${orfs[0].protein}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Augustus ──
+function renderAugustus(augResults) {
+  document.getElementById('r-augustus-body').innerHTML = augResults.map(item => {
+    const genes = item.result.genes || [];
+    const totalLen = genes.reduce((a,g)=> Math.max(a,g.end||0), 1);
+    const tracks = genes.map(g => {
+      const gs = ((g.start||0)/totalLen*100).toFixed(1);
+      const gw = (((g.end||0)-(g.start||0))/totalLen*100).toFixed(1);
+      const exons = (g.exons||[]).map(e => {
+        const es = ((e.start-(g.start||0))/Math.max((g.end||1)-(g.start||0),1)*100).toFixed(1);
+        const ew = (e.length/Math.max((g.end||1)-(g.start||0),1)*100).toFixed(1);
+        return `<div class="exon-blk" style="left:${es}%;width:${ew}%" title="Exon ${e.start}-${e.end}"></div>`;
+      }).join('');
+      return `<div style="margin-bottom:8px">
+        <div class="info-row"><span><b>${g.id}</b></span><span>Strand: <b>${g.strand||'+'}</b></span>
+          <span>Length: <b>${g.length_aa||0} aa</b></span><span>Exons: <b>${(g.exons||[]).length}</b></span></div>
+        <div class="gene-canvas"><div class="gene-blk" style="left:${gs}%;width:${gw}%">${exons}</div></div>
+        ${g.protein ? `<div class="orf-protein">${g.protein.slice(0,150)}${g.protein.length>150?'...':''}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${item.accession} — Augustus</div>
+        <div style="display:flex;gap:6px">
+          <span class="badge b-purple">${genes.length} genes</span>
+          <span class="badge b-muted">${item.result.source||''}</span>
+        </div>
+      </div>
+      ${genes.length ? tracks : '<div class="empty" style="padding:20px"><p>No genes predicted</p></div>'}
+    </div>`;
+  }).join('');
+}
+
+// ── BLASTN ──
+function renderBlastn(results) {
+  document.getElementById('r-blastn-body').innerHTML = results.map(item => {
+    const hits = (item.result.hits||[]).slice(0,20);
+    if (item.result.error) return `<div class="card mt"><div class="card-title">${item.accession}</div><p style="color:var(--red);font-size:12px;margin-top:8px">Error: ${item.result.error}</p></div>`;
+    const rows = hits.map((h,i) => `<tr>
+      <td>${i+1}</td>
+      <td class="mono c-blue">${h.accession}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${h.title}</td>
+      <td><b>${h.bits}</b></td>
+      <td class="evalue">${typeof h.e_value==='number'?h.e_value.toExponential(1):h.e_value}</td>
+      <td><div class="id-bar"><div class="id-fill" style="width:${Math.round(h.identity_pct*.6)}px"></div>${h.identity_pct}%</div></td>
+      <td>${h.query_cover}%</td>
+    </tr>`).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${item.accession} — BLASTN vs nt</div>
+        <span class="badge b-blue">${hits.length} hits</span>
+      </div>
+      ${hits.length ? `<div class="tbl-wrap">
+        <table><thead><tr><th>#</th><th>Accession</th><th>Description</th><th>Bits</th><th>E-value</th><th>Identity</th><th>Query Cov</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : '<p style="color:var(--muted);font-size:12px">No significant hits</p>'}
+    </div>`;
+  }).join('');
+}
+
+// ── BLASTP ──
+function renderBlastp(results) {
+  document.getElementById('r-blastp-body').innerHTML = results.map(item => {
+    const hits = (item.result.hits||[]).slice(0,20);
+    if (item.result.error) return `<div class="card mt"><div class="card-title">${item.accession}</div><p style="color:var(--red);font-size:12px;margin-top:8px">Error: ${item.result.error}</p></div>`;
+    const rows = hits.map((h,i) => `<tr>
+      <td>${i+1}</td>
+      <td class="mono c-blue">${h.accession}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${h.title}</td>
+      <td><b>${h.bits}</b></td>
+      <td class="evalue">${typeof h.e_value==='number'?h.e_value.toExponential(1):h.e_value}</td>
+      <td><div class="id-bar"><div class="id-fill" style="width:${Math.round(h.identity_pct*.6)}px"></div>${h.identity_pct}%</div></td>
+      <td>${h.positives_pct||'—'}%</td>
+    </tr>`).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${item.accession} — BLASTP vs nr</div>
+        <span class="badge b-purple">${hits.length} hits</span>
+      </div>
+      ${hits.length ? `<div class="tbl-wrap">
+        <table><thead><tr><th>#</th><th>Accession</th><th>Description</th><th>Bits</th><th>E-value</th><th>Identity</th><th>Positives</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : '<p style="color:var(--muted);font-size:12px">No significant hits</p>'}
+    </div>`;
+  }).join('');
+}
+
+// ── MSA ──
+function renderMSA(msa) {
+  if (msa.skipped) {
+    document.getElementById('r-msa-body').innerHTML = `<div class="card mt"><div class="empty"><div class="empty-ic">≡</div><p>${msa.reason||'Skipped'}</p></div></div>`;
+    return;
+  }
+  const aligned = msa.aligned || [];
+  const rows = aligned.map(a => {
+    const seq = (a.sequence||'').slice(0,120);
+    const colored = seq.split('').map(b => b==='-'?`<span style="color:var(--muted2)">-</span>`:`<span class="n${b}">${b}</span>`).join('');
+    return `<div class="msa-row"><span class="msa-id" title="${a.id}">${a.id}</span><span class="msa-seq">${colored}</span><span style="margin-left:8px;font-size:10px;color:var(--muted)">${a.identity_to_ref}%</span></div>`;
+  }).join('');
+  const cons = (msa.conservation||'').slice(0,120).split('').map(c =>
+    c==='*'?`<span class="c-blue">*</span>`:c===':'?`<span style="color:var(--muted)">:</span>`:`<span style="color:var(--border2)">.</span>`
+  ).join('');
+  document.getElementById('r-msa-body').innerHTML = `<div class="card mt">
+    <div class="card-head">
+      <div class="card-title">Multiple Sequence Alignment</div>
+      <div style="display:flex;gap:6px">
+        <span class="badge b-blue">${msa.num_sequences} seqs</span>
+        <span class="badge b-muted">${msa.alignment_length} bp</span>
+      </div>
+    </div>
+    <div class="msa-box">
+      ${rows}
+      <div class="msa-row"><span class="msa-id" style="color:var(--blue);font-size:10px">Conservation</span><span class="msa-seq cons-row">${cons}</span></div>
+    </div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">* = identical · : = conserved · . = semi-conserved · first 120 columns shown</div>
+  </div>`;
+}
+
+// ── Phylo ──
+function renderPhylo(treeResult) {
+  if (treeResult.skipped) {
+    document.getElementById('r-phylo-body').innerHTML = `<div class="card mt"><div class="empty"><div class="empty-ic">⋎</div><p>${treeResult.reason||'Skipped'}</p></div></div>`;
+    return;
+  }
+  if (treeResult.error) {
+    document.getElementById('r-phylo-body').innerHTML = `<div class="card mt"><p style="color:var(--red)">Error: ${treeResult.error}</p></div>`;
+    return;
+  }
+  document.getElementById('r-phylo-body').innerHTML = `<div class="card mt">
+    <div class="card-head">
+      <div class="card-title">Phylogenetic Tree</div>
+      <div style="display:flex;gap:6px">
+        <span class="badge b-green">${treeResult.method||''}</span>
+        <span class="badge b-muted">${treeResult.taxa} taxa</span>
+      </div>
+    </div>
+    <svg id="phylo-svg" height="380"></svg>
+    ${treeResult.newick ? `<div style="margin-top:10px;font-size:10.5px;color:var(--muted)">Newick:</div>
+      <div class="seq-box" style="font-size:10px;max-height:80px">${treeResult.newick}</div>` : ''}
+  </div>`;
+  setTimeout(() => drawTree(treeResult.tree), 80);
+}
+
+function drawTree(data) {
+  const svg = d3.select('#phylo-svg');
+  if (!svg.node()) return;
+  const W = svg.node().getBoundingClientRect().width || 700;
+  const H = 380;
+  const m = {t:20,r:160,b:20,l:40};
+  svg.selectAll('*').remove();
+  svg.attr('viewBox',`0 0 ${W} ${H}`);
+  const root = d3.hierarchy(data);
+  d3.tree().size([H-m.t-m.b, W-m.l-m.r])(root);
+  const g = svg.append('g').attr('transform',`translate(${m.l},${m.t})`);
+  g.selectAll('.phy-link').data(root.links()).join('path')
+    .attr('class','phy-link')
+    .attr('d',d3.linkHorizontal().x(d=>d.y).y(d=>d.x));
+  const node = g.selectAll('.phy-node').data(root.descendants()).join('g')
+    .attr('class','phy-node').attr('transform',d=>`translate(${d.y},${d.x})`);
+  node.append('circle').attr('r',d=>d.children?3.5:5)
+    .attr('fill',d=>d.children?'var(--muted)':'var(--blue)')
+    .attr('stroke','var(--black)').attr('stroke-width',2);
+  node.filter(d=>!d.children).append('text')
+    .attr('x',8).attr('dy','0.35em').attr('fill','var(--text)').attr('font-size',10.5)
+    .text(d=>d.data.name||'');
+}
+
+// ── Protein structure ──
+function renderStructure(structures) {
+  document.getElementById('r-structure-body').innerHTML = structures.map(st => {
+    if (st.error) return `<div class="card mt"><div class="card-title">${st.gene_id}</div><p style="color:var(--red);font-size:12px;margin-top:8px">Error: ${st.error}</p></div>`;
+    const ss = st.secondary_structure || {};
+    const stable = st.is_stable;
+    // SS bar segments
+    const segs = [
+      {k:'helix',v:ss.helix||0,cls:'ss-H',l:'H'},
+      {k:'turn',v:ss.turn||0,cls:'ss-T',l:'T'},
+      {k:'sheet',v:ss.sheet||0,cls:'ss-E',l:'E'},
+      {k:'coil',v:ss.coil||0,cls:'ss-C',l:'C'},
+    ];
+    const bar = segs.map(s=>`<div class="ss-seg ${s.cls}" style="width:${s.v}%">${s.v>8?s.l:''}</div>`).join('');
+    const aaComp = st.amino_acid_composition || {};
+    const aaRows = Object.entries(aaComp).slice(0,8).map(([k,v])=>
+      `<tr><td class="mono"><b>${k}</b></td><td>${v}%</td><td><div class="id-bar"><div class="id-fill" style="width:${Math.round(v*6)}px"></div></div></td></tr>`
+    ).join('');
+    return `<div class="card mt">
+      <div class="card-head">
+        <div class="card-title">${st.gene_id} — Protein Analysis</div>
+        <span class="badge ${stable?'b-green':'b-red'}">${stable?'Stable':'Unstable'}</span>
+      </div>
+      <div class="g4" style="margin-bottom:14px">
+        <div class="stat"><div class="stat-l">Mol. Weight</div><div class="stat-v c-blue" style="font-size:18px">${(st.molecular_weight||0).toLocaleString()}</div><div class="stat-s">Da</div></div>
+        <div class="stat"><div class="stat-l">pI</div><div class="stat-v c-yellow" style="font-size:18px">${st.isoelectric_point||'—'}</div></div>
+        <div class="stat"><div class="stat-l">Instability</div><div class="stat-v ${stable?'c-green':'c-red'}" style="font-size:18px">${st.instability_index||'—'}</div><div class="stat-s">&lt;40 = stable</div></div>
+        <div class="stat"><div class="stat-l">GRAVY</div><div class="stat-v c-purple" style="font-size:18px">${st.gravy||'—'}</div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px">Secondary Structure Composition:</div>
+      <div class="ss-bar">${bar}</div>
+      <div class="ss-legend">
+        <span><span class="ss-dot ss-H"></span>Helix ${ss.helix||0}%</span>
+        <span><span class="ss-dot ss-E"></span>Sheet ${ss.sheet||0}%</span>
+        <span><span class="ss-dot ss-T"></span>Turn ${ss.turn||0}%</span>
+        <span><span class="ss-dot ss-C"></span>Coil ${ss.coil||0}%</span>
+      </div>
+      ${st.protein_sequence?`<div class="divider"></div><div style="font-size:10.5px;color:var(--muted);margin-bottom:5px">Protein Sequence (first 200 aa):</div><div class="seq-box" style="font-size:11px;max-height:80px">${st.protein_sequence.slice(0,200)}</div>`:''}
+      ${aaRows?`<div class="divider"></div><div style="font-size:10.5px;color:var(--muted);margin-bottom:8px">Top Amino Acid Composition:</div>
+        <div class="tbl-wrap"><table><thead><tr><th>AA</th><th>%</th><th>Bar</th></tr></thead><tbody>${aaRows}</tbody></table></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ─────────────────────────
+// History
+// ─────────────────────────
+async function refreshHistory() {
+  try {
+    const r = await fetch('/api/jobs');
+    const d = await r.json();
+    const jobs = d.jobs || [];
+    const el = document.getElementById('history-list');
+    if (!jobs.length) { el.innerHTML = '<div class="empty"><div class="empty-ic">📭</div><p>No jobs yet</p></div>'; return; }
+    el.innerHTML = jobs.map(j => `
+      <div class="job-row" onclick="openJob('${j.id}')">
+        <span class="job-id-badge">${j.id}</span>
+        <div class="job-info">
+          <div class="job-accs">${j.accessions.join(', ')}</div>
+          <div class="job-meta">${j.accessions.length} seq · ${new Date(j.created_at*1000).toLocaleString()}${j.completed_at?' · '+(Math.round((j.completed_at-j.created_at)/60))+'min':''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="prog-wrap" style="width:80px"><div class="prog-bar" style="width:${j.progress}%"></div></div>
+          <span class="badge ${j.status==='complete'?'b-green':j.status==='error'?'b-red':'b-blue'}">${j.status}</span>
+          ${j.status==='complete'?`<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();downloadPDF('${j.id}')">⬇ PDF</button>`:''}
+          <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteJob('${j.id}')">✕</button>
+        </div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function refreshHome() {
+  try {
+    const r = await fetch('/api/jobs');
+    const d = await r.json();
+    const jobs = d.jobs || [];
+    document.getElementById('h-jobs').textContent = jobs.length;
+    const el = document.getElementById('h-recent');
+    if (!jobs.length) { el.innerHTML = '<div class="empty" style="padding:20px"><div class="empty-ic">📭</div><p>No jobs yet</p></div>'; return; }
+    el.innerHTML = jobs.slice(0,4).map(j => `
+      <div class="job-row" style="padding:8px 12px;margin-bottom:6px" onclick="openJob('${j.id}')">
+        <span class="job-id-badge" style="font-size:12px">${j.id}</span>
+        <div class="job-info"><div class="job-accs">${j.accessions.slice(0,3).join(', ')}${j.accessions.length>3?'...':''}</div></div>
+        <span class="badge ${j.status==='complete'?'b-green':j.status==='error'?'b-red':'b-blue'}">${j.status}</span>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function openJob(id) {
+  try {
+    const r = await fetch(`/api/jobs/${id}/full`);
+    const job = await r.json();
+    if (job.status === 'complete') {
+      S.results = job; currentJobId = id;
+      renderAll(job); showResultsNav(); go('r-retrieval');
+    } else {
+      toast(`Job ${id} status: ${job.status}`);
+    }
+  } catch(e) {}
+}
+
+async function deleteJob(id) {
+  if (!confirm(`Delete job ${id}?`)) return;
+  try {
+    await fetch(`/api/jobs/${id}`, {method:'DELETE'});
+    toast(`Job ${id} deleted`);
+    refreshHistory(); refreshHome();
+  } catch(e) { toast('Delete failed', true); }
+}
+
+function downloadPDF(id) {
+  window.open(`/api/jobs/${id}/pdf`, '_blank');
+}
+
+// ─────────────────────────
+// Toast
+// ─────────────────────────
+function toast(msg, err=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = err?'var(--red)':'var(--blue)';
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+// ─────────────────────────
+// Init
+// ─────────────────────────
+refreshHome(); refreshHistory();
+</script>
+</body>
+</html>

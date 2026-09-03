@@ -32,6 +32,7 @@ import requests
 
 import config
 import db
+from pipeline.validators import OPTIONAL_TOOLS
 
 log = logging.getLogger("phylogenie.pipeline")
 
@@ -652,6 +653,10 @@ async def run_full_pipeline(job_id: str, accessions: list[str], options: dict):
 async def _run_pipeline_body(job: dict, accessions: list[str], options: dict):
     job_id = job["id"]
     multiple = len(accessions) > 1
+    tools_opt = options.get("tools") or {}
+
+    def wants(tool: str) -> bool:
+        return bool(tools_opt.get(tool, True))
 
     try:
         _check_cancelled(job)
@@ -679,82 +684,104 @@ async def _run_pipeline_body(job: dict, accessions: list[str], options: dict):
                    {"orf_results": orf_results})
         _check_cancelled(job)
 
-        # ── Step 3: Augustus gene prediction (parallel) ──
-        job_update(job, "augustus", "running", 34, "Submitting to Augustus gene predictor (web)...")
+        # ── Step 3: Augustus gene prediction (parallel, optional) ──
         organism_model = options.get("organism_model", "human")
-        aug_data_list = await asyncio.gather(*(run_augustus(s["sequence"], organism_model) for s in sequences))
-        augustus_results = [{"accession": sequences[i]["accession"], "result": aug_data_list[i]} for i in range(len(sequences))]
-        total_genes = sum(r["result"].get("genes_predicted", 0) for r in augustus_results)
-        job_update(job, "augustus", "complete", 46, f"Augustus predicted {total_genes} gene(s)",
-                   {"augustus_results": augustus_results})
+        if wants("augustus"):
+            job_update(job, "augustus", "running", 34, "Submitting to Augustus gene predictor (web)...")
+            aug_data_list = await asyncio.gather(*(run_augustus(s["sequence"], organism_model) for s in sequences))
+            augustus_results = [{"accession": sequences[i]["accession"], "result": aug_data_list[i]} for i in range(len(sequences))]
+            total_genes = sum(r["result"].get("genes_predicted", 0) for r in augustus_results)
+            job_update(job, "augustus", "complete", 46, f"Augustus predicted {total_genes} gene(s)",
+                       {"augustus_results": augustus_results})
+        else:
+            augustus_results = [
+                {"accession": s["accession"], "result": {
+                    "genes_predicted": 0, "genes": [], "organism_model": organism_model,
+                    "source": "Skipped by user selection", "raw_output": "",
+                }} for s in sequences
+            ]
+            job_update(job, "augustus", "skipped", 46, "Skipped — disabled for this job", {"skipped": True})
         _check_cancelled(job)
 
-        # ── Step 4: BLASTN (sequential — NCBI rate-limits web BLAST heavily) ──
-        job_update(job, "blastn", "running", 48, "Running BLASTN against NCBI nt database...")
-        blastn_results = []
-        for seq in sequences:
-            _check_cancelled(job)
-            bn = await run_blastn(seq["sequence"], seq["accession"])
-            blastn_results.append({"accession": seq["accession"], "result": bn})
-            await asyncio.sleep(1)
-        job_update(job, "blastn", "complete", 60,
-                   f"BLASTN complete — {sum(len(r['result'].get('hits', [])) for r in blastn_results)} hits",
-                   {"blastn_results": blastn_results})
-
-        # ── Step 5: BLASTP (use longest ORF/Augustus protein) ──
-        job_update(job, "blastp", "running", 62, "Running BLASTP on predicted proteins...")
-        blastp_results = []
-        for i, seq in enumerate(sequences):
-            _check_cancelled(job)
-            protein = ""
-            orfs = orf_results[i]["result"].get("orfs", [])
-            if orfs:
-                protein = orfs[0]["protein"]
-            aug_genes = augustus_results[i]["result"].get("genes", [])
-            if aug_genes and aug_genes[0].get("protein"):
-                protein = aug_genes[0]["protein"]
-
-            if protein:
-                bp = await run_blastp(protein, seq["accession"])
-                blastp_results.append({"accession": seq["accession"], "result": bp})
+        # ── Step 4: BLASTN (sequential — NCBI rate-limits web BLAST heavily; optional) ──
+        if wants("blastn"):
+            job_update(job, "blastn", "running", 48, "Running BLASTN against NCBI nt database...")
+            blastn_results = []
+            for seq in sequences:
+                _check_cancelled(job)
+                bn = await run_blastn(seq["sequence"], seq["accession"])
+                blastn_results.append({"accession": seq["accession"], "result": bn})
                 await asyncio.sleep(1)
-        job_update(job, "blastp", "complete", 74,
-                   f"BLASTP complete — {sum(len(r['result'].get('hits', [])) for r in blastp_results)} hits",
-                   {"blastp_results": blastp_results})
+            job_update(job, "blastn", "complete", 60,
+                       f"BLASTN complete — {sum(len(r['result'].get('hits', [])) for r in blastn_results)} hits",
+                       {"blastn_results": blastn_results})
+        else:
+            job_update(job, "blastn", "skipped", 60, "Skipped — disabled for this job", {"skipped": True})
+
+        # ── Step 5: BLASTP (use longest ORF/Augustus protein; optional) ──
+        if wants("blastp"):
+            job_update(job, "blastp", "running", 62, "Running BLASTP on predicted proteins...")
+            blastp_results = []
+            for i, seq in enumerate(sequences):
+                _check_cancelled(job)
+                protein = ""
+                orfs = orf_results[i]["result"].get("orfs", [])
+                if orfs:
+                    protein = orfs[0]["protein"]
+                aug_genes = augustus_results[i]["result"].get("genes", [])
+                if aug_genes and aug_genes[0].get("protein"):
+                    protein = aug_genes[0]["protein"]
+
+                if protein:
+                    bp = await run_blastp(protein, seq["accession"])
+                    blastp_results.append({"accession": seq["accession"], "result": bp})
+                    await asyncio.sleep(1)
+            job_update(job, "blastp", "complete", 74,
+                       f"BLASTP complete — {sum(len(r['result'].get('hits', [])) for r in blastp_results)} hits",
+                       {"blastp_results": blastp_results})
+        else:
+            job_update(job, "blastp", "skipped", 74, "Skipped — disabled for this job", {"skipped": True})
         _check_cancelled(job)
 
-        # ── Step 6: MSA ──
-        if multiple:
+        # ── Step 6: MSA (optional, requires 2+ sequences) ──
+        if multiple and wants("msa"):
             job_update(job, "msa", "running", 76, "Running multiple sequence alignment...")
             msa_result = await run_msa(sequences)
             job_update(job, "msa", "complete", 82, "MSA complete", {"msa": msa_result})
-        else:
+        elif not multiple:
             job_update(job, "msa", "skipped", 82, "Skipped — MSA requires 2+ sequences",
                        {"skipped": True, "reason": "Single sequence"})
+        else:
+            job_update(job, "msa", "skipped", 82, "Skipped — disabled for this job", {"skipped": True})
 
-        # ── Step 7: Phylogenetic tree ──
-        if multiple:
+        # ── Step 7: Phylogenetic tree (optional, requires 2+ sequences) ──
+        if multiple and wants("phylo"):
             job_update(job, "phylo", "running", 83, "Building phylogenetic tree (Neighbor-Joining)...")
             phylo_result = await run_phylo_tree(sequences)
             job_update(job, "phylo", "complete", 88, "Phylogenetic tree built", {"tree": phylo_result})
-        else:
+        elif not multiple:
             job_update(job, "phylo", "skipped", 88, "Skipped — requires 2+ sequences",
                        {"skipped": True, "reason": "Single sequence"})
+        else:
+            job_update(job, "phylo", "skipped", 88, "Skipped — disabled for this job", {"skipped": True})
         _check_cancelled(job)
 
-        # ── Step 8: Protein structure analysis (parallel) ──
-        job_update(job, "structure", "running", 89, "Analysing protein physicochemical properties...")
-        struct_inputs = []
-        for i in range(len(sequences)):
-            orfs = orf_results[i]["result"].get("orfs", [])
-            if orfs:
-                struct_inputs.append((orfs[0]["protein"], sequences[i]["accession"]))
-        structure_results = list(await asyncio.gather(
-            *(run_protein_analysis(protein, gene_id) for protein, gene_id in struct_inputs)
-        ))
-        job_update(job, "structure", "complete", 97,
-                   f"Protein analysis complete for {len(structure_results)} sequence(s)",
-                   {"structures": structure_results})
+        # ── Step 8: Protein structure analysis (parallel, optional) ──
+        if wants("structure"):
+            job_update(job, "structure", "running", 89, "Analysing protein physicochemical properties...")
+            struct_inputs = []
+            for i in range(len(sequences)):
+                orfs = orf_results[i]["result"].get("orfs", [])
+                if orfs:
+                    struct_inputs.append((orfs[0]["protein"], sequences[i]["accession"]))
+            structure_results = list(await asyncio.gather(
+                *(run_protein_analysis(protein, gene_id) for protein, gene_id in struct_inputs)
+            ))
+            job_update(job, "structure", "complete", 97,
+                       f"Protein analysis complete for {len(structure_results)} sequence(s)",
+                       {"structures": structure_results})
+        else:
+            job_update(job, "structure", "skipped", 97, "Skipped — disabled for this job", {"skipped": True})
 
         job["status"] = "complete"
         job["progress"] = 100

@@ -16,7 +16,7 @@ import config
 import db
 from pipeline import JOB_STORE, _save_job, generate_pdf, run_full_pipeline
 from pipeline.core import fetch_sequence, run_blastn, run_blastp
-from pipeline.validators import ValidationError, validate_accession, validate_accessions, validate_organism_model
+from pipeline.validators import ValidationError, validate_accession, validate_accessions, validate_organism_model, validate_tools
 
 log = logging.getLogger("phylogenie.api")
 
@@ -58,6 +58,15 @@ async def create_job(req: JobRequest, background_tasks: BackgroundTasks):
     options = dict(req.options or {})
     if "organism_model" in options:
         options["organism_model"] = validate_organism_model(options["organism_model"])
+    tools = validate_tools(options.get("tools"))
+    options["tools"] = tools
+
+    def initial_step(name: str, requires_multiple: bool = False):
+        if requires_multiple and not (len(accessions) > 1):
+            return {"status": "skipped", "message": "Skipped — requires 2+ sequences", "data": {}}
+        if not tools.get(name, True):
+            return {"status": "skipped", "message": "Skipped — disabled for this job", "data": {}}
+        return {"status": "pending", "message": "Queued", "data": {}}
 
     job_id = str(uuid.uuid4())[:8].upper()
     multiple = len(accessions) > 1
@@ -77,14 +86,12 @@ async def create_job(req: JobRequest, background_tasks: BackgroundTasks):
         "steps": {
             "retrieval": {"status": "pending", "message": "Queued", "data": {}},
             "orf":       {"status": "pending", "message": "Queued", "data": {}},
-            "augustus":  {"status": "pending", "message": "Queued", "data": {}},
-            "blastn":    {"status": "pending", "message": "Queued", "data": {}},
-            "blastp":    {"status": "pending", "message": "Queued", "data": {}},
-            "msa":       {"status": "pending" if multiple else "skipped",
-                          "message": "Queued" if multiple else "Skipped — single sequence", "data": {}},
-            "phylo":     {"status": "pending" if multiple else "skipped",
-                          "message": "Queued" if multiple else "Skipped — single sequence", "data": {}},
-            "structure": {"status": "pending", "message": "Queued", "data": {}},
+            "augustus":  initial_step("augustus"),
+            "blastn":    initial_step("blastn"),
+            "blastp":    initial_step("blastp"),
+            "msa":       initial_step("msa", requires_multiple=True),
+            "phylo":     initial_step("phylo", requires_multiple=True),
+            "structure": initial_step("structure"),
         },
     }
     JOB_STORE[job_id] = job

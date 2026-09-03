@@ -294,13 +294,172 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
   border-radius: 6px; padding: 10px 14px; font-size: 12px; color: var(--yellow);
   margin-bottom: 16px;
 }
+
+/* ══════════════════════════════════════════════════
+   Tool selection toggles
+   ══════════════════════════════════════════════════ */
+.tool-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 4px; border-bottom: 1px solid var(--border);
+  transition: opacity .2s ease;
+}
+.tool-row:last-child { border-bottom: none; }
+.tool-row.locked { opacity: .6; }
+.tool-row.inactive { opacity: .4; }
+.tool-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tool-ic {
+  width: 26px; height: 26px; border-radius: 6px; flex-shrink: 0;
+  background: var(--bg2); display: flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.tool-name { font-size: 12.5px; font-weight: 600; }
+.tool-desc { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; inset: 0; cursor: pointer; background: var(--bg2);
+  border: 1px solid var(--border2); border-radius: 22px; transition: background .2s, border-color .2s;
+}
+.switch .slider::before {
+  content: ""; position: absolute; height: 16px; width: 16px; left: 2px; top: 2px;
+  background: var(--muted); border-radius: 50%; transition: transform .2s cubic-bezier(.4,0,.2,1), background .2s;
+}
+.switch input:checked + .slider { background: var(--blue-dim); border-color: rgba(0,170,255,.4); }
+.switch input:checked + .slider::before { transform: translateX(16px); background: var(--blue); box-shadow: 0 0 8px var(--blue-glow); }
+.switch input:disabled + .slider { cursor: not-allowed; opacity: .5; }
+.switch input:focus-visible + .slider { box-shadow: 0 0 0 2px rgba(0,170,255,.3); }
+
+/* ══════════════════════════════════════════════════
+   Motion — entrances, hovers, running-state feedback
+   ══════════════════════════════════════════════════ */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shimmer { 0% { background-position: -120px 0; } 100% { background-position: 120px 0; } }
+@keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(0,170,255,.35); } 100% { box-shadow: 0 0 0 8px rgba(0,170,255,0); } }
+@keyframes popIn { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+
+.page.active { animation: fadeInUp .28s cubic-bezier(.16,1,.3,1); }
+
+.card { transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease; animation: fadeInUp .3s cubic-bezier(.16,1,.3,1) backwards; }
+.card:hover { border-color: var(--border2); }
+.stat { transition: border-color .2s ease, transform .18s ease; animation: fadeInUp .3s cubic-bezier(.16,1,.3,1) backwards; }
+.stat:hover { border-color: rgba(0,170,255,.3); transform: translateY(-2px); }
+.g4 .stat:nth-child(1) { animation-delay: .02s; }
+.g4 .stat:nth-child(2) { animation-delay: .06s; }
+.g4 .stat:nth-child(3) { animation-delay: .10s; }
+.g4 .stat:nth-child(4) { animation-delay: .14s; }
+
+.btn { transform: translateY(0); }
+.btn:not(:disabled):hover { transform: translateY(-1px); }
+.btn:not(:disabled):active { transform: translateY(0) scale(.98); }
+.btn-blue:not(:disabled) { box-shadow: 0 0 0 rgba(0,170,255,0); }
+.btn-blue:not(:disabled):hover { box-shadow: 0 4px 16px rgba(0,170,255,.25); }
+
+.nav-item { position: relative; }
+.nav-item.active::before {
+  content: ""; position: absolute; left: -8px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 60%; background: var(--blue); border-radius: 2px;
+  box-shadow: 0 0 6px var(--blue-glow);
+}
+
+.job-row { transition: border-color .18s ease, transform .18s ease; animation: fadeInUp .25s ease backwards; }
+.job-row:hover { transform: translateX(2px); }
+
+/* Note: #s-steps is re-rendered wholesale on every ~1.5s poll while a job
+   runs, so entrance animations live only on .step-ic (small, contained)
+   rather than the whole .step row — animating the row itself would look
+   like a flicker every poll instead of a one-time entrance. */
+.step { position: relative; overflow: hidden; }
+.step-ic.running { animation: pulseRing 1.6s ease-out infinite; }
+
+/* Progress bar shimmer while active */
+.prog-bar { position: relative; overflow: hidden; }
+.prog-bar::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  background-size: 60px 100%; background-repeat: no-repeat;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.chip { animation: popIn .18s cubic-bezier(.34,1.56,.64,1); }
+
+#toast { transition: opacity .25s cubic-bezier(.16,1,.3,1), transform .25s cubic-bezier(.16,1,.3,1); }
+
+.logo-name { display: inline-block; }
+.dot { will-change: opacity; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+
+/* ══════════════════════════════════════════════════
+   Responsive layout
+   ══════════════════════════════════════════════════ */
+.menu-btn {
+  display: none; background: transparent; border: 1px solid var(--border); color: var(--text);
+  width: 32px; height: 32px; border-radius: 6px; font-size: 16px; cursor: pointer; flex-shrink: 0;
+  align-items: center; justify-content: center; transition: border-color .15s, background .15s;
+}
+.menu-btn:hover { border-color: var(--border2); background: var(--bg2); }
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 1180px) {
+  .g4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 980px) {
+  .g2, .g3 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 860px) {
+  .menu-btn { display: inline-flex; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 1001;
+    width: 240px; transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.16,1,.3,1);
+    box-shadow: 8px 0 30px rgba(0,0,0,.5);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    z-index: 1000; opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  }
+  .sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+  .content { padding: 16px; }
+  .topbar { padding: 0 14px; }
+  .g4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .g4 { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pg-title { font-size: 17px; }
+  .stat-v { font-size: 21px; }
+  .content { padding: 14px; }
+  .card { padding: 14px; }
+  .topbar .breadcrumb { font-size: 11px; }
+  .topbar .full-label { display: none !important; }
+  .topbar .short-label { display: inline !important; }
+  .job-row { flex-wrap: wrap; }
+  .job-info { min-width: 140px; }
+  .msa-id { width: 80px; }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 6px 7px; }
+}
+
+@media (max-width: 420px) {
+  .g4 { grid-template-columns: 1fr; }
+  .card-title { font-size: 11px; }
+  .btn-lg { width: 100%; justify-content: center; }
+}
 </style>
 </head>
 <body>
 <div class="app">
 
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
 <!-- ── Sidebar ── -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="logo">
     <div class="logo-name">🧬 PhyloGenie</div>
     <div class="logo-tag">Real-Tools Analysis</div>
@@ -327,9 +486,10 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
 <!-- ── Main ── -->
 <main class="main">
   <div class="topbar">
+    <button class="menu-btn" id="menu-btn" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
     <div class="breadcrumb">PhyloGenie / <b id="bc">Home</b></div>
     <span id="job-badge" style="display:none" class="badge b-blue">⚡ Running</span>
-    <button class="btn btn-blue btn-sm" onclick="go('analyze')">+ New Analysis</button>
+    <button class="btn btn-blue btn-sm" onclick="go('analyze')"><span class="full-label">+ New Analysis</span><span class="short-label" style="display:none">+</span></button>
   </div>
 
   <div class="content">
@@ -421,6 +581,45 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
                   <option value="50">50</option>
                 </select>
               </div>
+            </div>
+          </div>
+
+          <div class="card mt">
+            <div class="card-head">
+              <div class="card-title">Tools to Run</div>
+              <span id="tools-count" class="badge b-blue">6/6</span>
+            </div>
+            <div class="tool-row locked">
+              <div class="tool-info"><span class="tool-ic">⬇</span><div><div class="tool-name">Sequence Retrieval</div><div class="tool-desc">NCBI Entrez — always included</div></div></div>
+              <span class="badge b-muted">Required</span>
+            </div>
+            <div class="tool-row locked">
+              <div class="tool-info"><span class="tool-ic">⊡</span><div><div class="tool-name">ORF Finder</div><div class="tool-desc">6 reading frames — always included</div></div></div>
+              <span class="badge b-muted">Required</span>
+            </div>
+            <div class="tool-row">
+              <div class="tool-info"><span class="tool-ic">⚟</span><div><div class="tool-name">Augustus</div><div class="tool-desc">Ab initio gene prediction</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-augustus" checked onchange="updateToolsCount()"><span class="slider"></span></label>
+            </div>
+            <div class="tool-row">
+              <div class="tool-info"><span class="tool-ic">◎</span><div><div class="tool-name">BLASTN</div><div class="tool-desc">Nucleotide homology vs nt</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-blastn" checked onchange="updateToolsCount()"><span class="slider"></span></label>
+            </div>
+            <div class="tool-row">
+              <div class="tool-info"><span class="tool-ic">◉</span><div><div class="tool-name">BLASTP</div><div class="tool-desc">Protein homology vs nr</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-blastp" checked onchange="updateToolsCount()"><span class="slider"></span></label>
+            </div>
+            <div class="tool-row" id="row-tool-msa">
+              <div class="tool-info"><span class="tool-ic">≡</span><div><div class="tool-name">MSA</div><div class="tool-desc">Requires 2+ sequences</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-msa" checked onchange="updateToolsCount()"><span class="slider"></span></label>
+            </div>
+            <div class="tool-row" id="row-tool-phylo">
+              <div class="tool-info"><span class="tool-ic">⋎</span><div><div class="tool-name">Phylogenetic Tree</div><div class="tool-desc">Requires 2+ sequences</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-phylo" checked onchange="updateToolsCount()"><span class="slider"></span></label>
+            </div>
+            <div class="tool-row">
+              <div class="tool-info"><span class="tool-ic">◈</span><div><div class="tool-name">Protein Analysis</div><div class="tool-desc">MW, pI, stability, 2° structure</div></div></div>
+              <label class="switch"><input type="checkbox" class="tool-toggle" id="tool-structure" checked onchange="updateToolsCount()"><span class="slider"></span></label>
             </div>
           </div>
         </div>
@@ -559,7 +758,19 @@ function go(page) {
   };
   document.getElementById('bc').textContent = labels[page] || page;
 }
-document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', () => go(el.dataset.page)));
+document.querySelectorAll('.nav-item').forEach(el => el.addEventListener('click', () => { go(el.dataset.page); closeSidebar(); }));
+
+// ─────────────────────────
+// Mobile sidebar
+// ─────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('show');
+}
 
 function showResultsNav() {
   document.getElementById('results-nav-group').style.display = '';
@@ -605,6 +816,40 @@ function updateLaunch() {
   } else {
     info.textContent = 'Add at least one accession number to begin.';
   }
+  syncMultiOnlyTools();
+}
+
+// ─────────────────────────
+// Tool selection
+// ─────────────────────────
+function syncMultiOnlyTools() {
+  const multi = S.accs.length >= 2;
+  ['msa', 'phylo'].forEach(t => {
+    const el = document.getElementById('tool-' + t);
+    const row = document.getElementById('row-tool-' + t);
+    if (!el || !row) return;
+    el.disabled = !multi;
+    row.classList.toggle('inactive', !multi);
+  });
+}
+
+function updateToolsCount() {
+  const toggles = document.querySelectorAll('.tool-toggle');
+  const checked = Array.from(toggles).filter(t => t.checked).length;
+  const badge = document.getElementById('tools-count');
+  badge.textContent = `${checked}/${toggles.length}`;
+  badge.className = 'badge ' + (checked === toggles.length ? 'b-blue' : 'b-yellow');
+}
+
+function getSelectedTools() {
+  return {
+    augustus: document.getElementById('tool-augustus').checked,
+    blastn: document.getElementById('tool-blastn').checked,
+    blastp: document.getElementById('tool-blastp').checked,
+    msa: document.getElementById('tool-msa').checked,
+    phylo: document.getElementById('tool-phylo').checked,
+    structure: document.getElementById('tool-structure').checked,
+  };
 }
 
 // ─────────────────────────
@@ -615,6 +860,7 @@ async function launch() {
   const options = {
     organism_model: document.getElementById('opt-org').value,
     hitlist_size: parseInt(document.getElementById('opt-hits').value),
+    tools: getSelectedTools(),
   };
   try {
     const r = await fetch('/api/jobs', {
@@ -744,16 +990,35 @@ async function loadFullResults(id) {
 
 function showResults() { go('r-retrieval'); }
 
+function renderSkippedState(elId, step) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const reason = step?.message || 'This tool was not run for this job.';
+  el.innerHTML = `<div class="empty"><div class="empty-ic">⏭</div><p>${reason}</p></div>`;
+}
+
 function renderAll(job) {
   const steps = job.steps || {};
   if (steps.retrieval?.data?.sequences) renderRetrieval(steps.retrieval.data.sequences);
   if (steps.orf?.data?.orf_results) renderORF(steps.orf.data.orf_results);
+
   if (steps.augustus?.data?.augustus_results) renderAugustus(steps.augustus.data.augustus_results);
+  else renderSkippedState('r-augustus-body', steps.augustus);
+
   if (steps.blastn?.data?.blastn_results) renderBlastn(steps.blastn.data.blastn_results);
+  else renderSkippedState('r-blastn-body', steps.blastn);
+
   if (steps.blastp?.data?.blastp_results) renderBlastp(steps.blastp.data.blastp_results);
+  else renderSkippedState('r-blastp-body', steps.blastp);
+
   if (steps.msa?.data?.msa) renderMSA(steps.msa.data.msa);
+  else renderSkippedState('r-msa-body', steps.msa);
+
   if (steps.phylo?.data?.tree) renderPhylo(steps.phylo.data.tree);
+  else renderSkippedState('r-phylo-body', steps.phylo);
+
   if (steps.structure?.data?.structures) renderStructure(steps.structure.data.structures);
+  else renderSkippedState('r-structure-body', steps.structure);
 }
 
 // ── Retrieval ──
@@ -1135,6 +1400,7 @@ async function checkConfig() {
 }
 checkConfig();
 refreshHome(); refreshHistory();
+syncMultiOnlyTools();
 </script>
 </body>
 </html>

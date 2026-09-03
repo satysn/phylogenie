@@ -11,6 +11,8 @@ VALID_ORGANISM_MODELS = {
     "human", "mouse", "arabidopsis", "drosophila", "zebrafish", "rice",
 }
 
+OPTIONAL_TOOLS = ("augustus", "blastn", "blastp", "msa", "phylo", "structure")
+
 
 class ValidationError(ValueError):
     pass
@@ -48,3 +50,10 @@ def validate_accessions(accessions: list[str], max_sequences: int) -> list[str]:
 def validate_organism_model(name: str) -> str:
     name = (name or "human").strip().lower()
     return name if name in VALID_ORGANISM_MODELS else "human"
+
+
+def validate_tools(tools: dict | None) -> dict:
+    """Coerce a user-supplied {tool_name: bool} selection into a clean dict —
+    unknown keys are dropped, missing/invalid values default to enabled."""
+    tools = tools or {}
+    return {name: bool(tools.get(name, True)) for name in OPTIONAL_TOOLS}

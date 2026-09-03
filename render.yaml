@@ -12,7 +12,21 @@ services:
         sync: false
       - key: LOG_LEVEL
         value: INFO
-    disk:
-      name: phylogenie-data
-      mountPath: /opt/render/project/src/outputs
-      sizeGB: 1
+
+    # Render's free plan has no persistent disk — job history (SQLite db +
+    # cached PDFs) resets on every restart/redeploy, which is fine for
+    # letting people run and view one analysis at a time.
+    #
+    # To keep job history across restarts, upgrade `plan` to `starter` (or
+    # higher) and uncomment the block below. Both OUTPUT_DIR and DB_PATH
+    # must live on the mounted disk, or only one of them will persist:
+    #
+    # envVars:
+    #   - key: OUTPUT_DIR
+    #     value: /var/data/outputs
+    #   - key: DB_PATH
+    #     value: /var/data/phylogenie.db
+    # disk:
+    #   name: phylogenie-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

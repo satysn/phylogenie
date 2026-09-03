@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PhyloGenie</title>
+<meta name="description" content="Genomic sequence analysis platform powered by real NCBI, Augustus and Biopython tools.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧬</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 :root {
@@ -370,8 +372,8 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
       <div class="pg-title">New Analysis</div>
       <div class="pg-sub">Enter one or more NCBI accession numbers and launch the full pipeline</div>
 
-      <div class="warn-banner">
-        ⚠️ <b>Before running:</b> open <code>config.py</code> and set your NCBI email. Get a free API key at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank" style="color:var(--blue)">ncbi.nlm.nih.gov/account</a> for 10× faster BLAST.
+      <div class="warn-banner" id="config-warning" style="display:none">
+        ⚠️ <b id="config-warning-text"></b> Set <code>NCBI_EMAIL</code> in your <code>.env</code> file (see <code>.env.example</code>). Get a free API key at <a href="https://www.ncbi.nlm.nih.gov/account/" target="_blank" style="color:var(--blue)">ncbi.nlm.nih.gov/account</a> for 10× faster BLAST.
       </div>
 
       <div class="g2">
@@ -444,11 +446,17 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
               <div class="prog-wrap"><div class="prog-bar" id="s-bar" style="width:0%"></div></div>
             </div>
             <div class="steps" id="s-steps"></div>
+            <div id="s-cancel" style="display:none;margin-top:13px">
+              <button class="btn btn-ghost" style="width:100%;color:var(--red)" onclick="cancelJob(currentJobId)">✕ Cancel Job</button>
+            </div>
             <div id="s-done" style="display:none;margin-top:13px">
               <button class="btn btn-blue" style="width:100%" onclick="showResults()">View Results →</button>
             </div>
             <div id="s-pdf" style="display:none;margin-top:8px">
               <button class="btn btn-ghost" style="width:100%" onclick="downloadPDF(currentJobId)">⬇ Download PDF Report</button>
+            </div>
+            <div id="s-json" style="display:none;margin-top:8px">
+              <button class="btn btn-ghost" style="width:100%" onclick="downloadJSON(currentJobId)">⬇ Download Raw JSON</button>
             </div>
           </div>
         </div>
@@ -620,6 +628,8 @@ async function launch() {
     document.getElementById('status-card').style.display = '';
     document.getElementById('s-done').style.display = 'none';
     document.getElementById('s-pdf').style.display = 'none';
+    document.getElementById('s-json').style.display = 'none';
+    document.getElementById('s-cancel').style.display = '';
     document.getElementById('job-badge').style.display = '';
     document.getElementById('launch-btn').disabled = true;
     toast(`Job ${d.job_id} launched`);
@@ -656,8 +666,9 @@ async function pollJob(id) {
     document.getElementById('s-pct').textContent = pct + '%';
     document.getElementById('s-label').textContent = stepLabel(job.current_step);
     const badge = document.getElementById('s-badge');
-    badge.textContent = job.status === 'complete' ? 'Complete' : job.status === 'error' ? 'Error' : 'Running';
-    badge.className = 'badge ' + (job.status==='complete'?'b-green':job.status==='error'?'b-red':'b-blue');
+    const statusLabels = {complete:'Complete', error:'Error', cancelled:'Cancelled', queued:'Queued'};
+    badge.textContent = statusLabels[job.status] || 'Running';
+    badge.className = 'badge ' + (job.status==='complete'?'b-green':(job.status==='error'||job.status==='cancelled')?'b-red':'b-blue');
 
     document.getElementById('s-steps').innerHTML = STEP_DEFS.map(s => {
       const st = (job.steps||{})[s.key] || {status:'pending',message:'Queued'};
@@ -675,21 +686,41 @@ async function pollJob(id) {
       </div>`;
     }).join('');
 
-    if (job.status === 'complete' || job.status === 'error') {
+    if (job.status === 'complete' || job.status === 'error' || job.status === 'cancelled') {
       clearInterval(S.poll);
       document.getElementById('job-badge').style.display = 'none';
       document.getElementById('launch-btn').disabled = false;
+      document.getElementById('s-cancel').style.display = 'none';
       if (job.status === 'complete') {
         document.getElementById('s-done').style.display = '';
         document.getElementById('s-pdf').style.display = '';
+        document.getElementById('s-json').style.display = '';
         toast('Analysis complete! 🎉');
         await loadFullResults(id);
+      } else if (job.status === 'cancelled') {
+        toast('Job cancelled', true);
       } else {
         toast('Job failed: '+(job.error||'Unknown'), true);
       }
       refreshHome(); refreshHistory();
     }
   } catch(e) { console.error(e); }
+}
+
+async function cancelJob(id) {
+  if (!id) return;
+  try {
+    const r = await fetch(`/api/jobs/${id}/cancel`, {method:'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Failed');
+    toast('Cancellation requested');
+    refreshHistory(); refreshHome();
+  } catch(e) { toast('Error: '+e.message, true); }
+}
+
+function downloadJSON(id) {
+  if (!id) return;
+  window.open(`/api/jobs/${id}/json`, '_blank');
 }
 
 function stepLabel(k) {
@@ -1026,8 +1057,9 @@ async function refreshHistory() {
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div class="prog-wrap" style="width:80px"><div class="prog-bar" style="width:${j.progress}%"></div></div>
-          <span class="badge ${j.status==='complete'?'b-green':j.status==='error'?'b-red':'b-blue'}">${j.status}</span>
+          <span class="badge ${j.status==='complete'?'b-green':(j.status==='error'||j.status==='cancelled')?'b-red':'b-blue'}">${j.status}</span>
           ${j.status==='complete'?`<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();downloadPDF('${j.id}')">⬇ PDF</button>`:''}
+          ${j.status==='running'?`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="event.stopPropagation();cancelJob('${j.id}')">✕ Cancel</button>`:''}
           <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteJob('${j.id}')">✕</button>
         </div>
       </div>`).join('');
@@ -1091,6 +1123,17 @@ function toast(msg, err=false) {
 // ─────────────────────────
 // Init
 // ─────────────────────────
+async function checkConfig() {
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    if (d.warnings && d.warnings.length) {
+      document.getElementById('config-warning-text').textContent = d.warnings[0];
+      document.getElementById('config-warning').style.display = '';
+    }
+  } catch (e) {}
+}
+checkConfig();
 refreshHome(); refreshHistory();
 </script>
 </body>

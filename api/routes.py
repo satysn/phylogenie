@@ -2,36 +2,62 @@
 PhyloGenie API Routes
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import List, Optional, Dict
-import uuid, time, os
+import logging
+import time
+import uuid
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from pipeline import run_full_pipeline, JOB_STORE, generate_pdf, _save_job
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field, field_validator
+
 import config
+import db
+from pipeline import JOB_STORE, _save_job, generate_pdf, run_full_pipeline
+from pipeline.core import fetch_sequence, run_blastn, run_blastp
+from pipeline.validators import ValidationError, validate_accession, validate_accessions, validate_organism_model
+
+log = logging.getLogger("phylogenie.api")
 
 router = APIRouter()
 
 
 class JobRequest(BaseModel):
-    accessions: List[str]
+    accessions: List[str] = Field(..., min_length=1)
     options: Optional[Dict] = {}
+
+    @field_validator("accessions")
+    @classmethod
+    def _non_empty_strings(cls, v):
+        if not any(a.strip() for a in v):
+            raise ValueError("At least one non-empty accession is required")
+        return v
 
 
 @router.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.0.0", "tools": ["NCBI Entrez", "ORF Finder", "Augustus", "BLASTN", "BLASTP", "MSA", "Phylo NJ", "ProtParam"]}
+    problems = config.validate()
+    return {
+        "status": "ok" if not problems else "degraded",
+        "version": "3.0.0",
+        "tools": ["NCBI Entrez", "ORF Finder", "Augustus", "BLASTN", "BLASTP", "MSA", "Phylo NJ", "ProtParam"],
+        "warnings": problems,
+        "active_jobs": sum(1 for j in JOB_STORE.values() if j.get("status") == "running"),
+        "total_jobs": len(JOB_STORE),
+    }
 
 
 @router.post("/jobs")
 async def create_job(req: JobRequest, background_tasks: BackgroundTasks):
-    accessions = [a.strip().upper() for a in req.accessions if a.strip()]
-    if not accessions:
-        raise HTTPException(400, "At least one accession required")
-    if len(accessions) > config.MAX_SEQUENCES:
-        raise HTTPException(400, f"Maximum {config.MAX_SEQUENCES} sequences per job")
+    try:
+        accessions = validate_accessions(req.accessions, config.MAX_SEQUENCES)
+    except ValidationError as e:
+        raise HTTPException(400, str(e))
+
+    options = dict(req.options or {})
+    if "organism_model" in options:
+        options["organism_model"] = validate_organism_model(options["organism_model"])
 
     job_id = str(uuid.uuid4())[:8].upper()
     multiple = len(accessions) > 1
@@ -42,11 +68,12 @@ async def create_job(req: JobRequest, background_tasks: BackgroundTasks):
         "progress": 0,
         "current_step": "retrieval",
         "accessions": accessions,
-        "options": req.options or {},
+        "options": options,
         "created_at": time.time(),
         "completed_at": None,
         "error": None,
         "multiple_sequences": multiple,
+        "_cancel_requested": False,
         "steps": {
             "retrieval": {"status": "pending", "message": "Queued", "data": {}},
             "orf":       {"status": "pending", "message": "Queued", "data": {}},
@@ -58,25 +85,30 @@ async def create_job(req: JobRequest, background_tasks: BackgroundTasks):
             "phylo":     {"status": "pending" if multiple else "skipped",
                           "message": "Queued" if multiple else "Skipped — single sequence", "data": {}},
             "structure": {"status": "pending", "message": "Queued", "data": {}},
-        }
+        },
     }
     JOB_STORE[job_id] = job
     _save_job(job)
-    background_tasks.add_task(run_full_pipeline, job_id, accessions, req.options or {})
+    background_tasks.add_task(run_full_pipeline, job_id, accessions, options)
+    log.info("Created job %s for accessions=%s", job_id, accessions)
     return {"job_id": job_id, "status": "running"}
 
 
 @router.get("/jobs")
-async def list_jobs():
+async def list_jobs(limit: int = 100, offset: int = 0):
     jobs = sorted(JOB_STORE.values(), key=lambda j: j["created_at"], reverse=True)
-    return {"jobs": [
-        {
-            "id": j["id"], "status": j["status"], "progress": j["progress"],
-            "accessions": j["accessions"], "created_at": j["created_at"],
-            "completed_at": j.get("completed_at"), "error": j.get("error"),
-            "multiple": j.get("multiple_sequences", False)
-        } for j in jobs
-    ]}
+    page = jobs[offset: offset + max(1, min(limit, 500))]
+    return {
+        "total": len(jobs),
+        "jobs": [
+            {
+                "id": j["id"], "status": j["status"], "progress": j["progress"],
+                "accessions": j["accessions"], "created_at": j["created_at"],
+                "completed_at": j.get("completed_at"), "error": j.get("error"),
+                "multiple": j.get("multiple_sequences", False),
+            } for j in page
+        ],
+    }
 
 
 @router.get("/jobs/{job_id}")
@@ -84,12 +116,8 @@ async def get_job(job_id: str):
     job = JOB_STORE.get(job_id)
     if not job:
         raise HTTPException(404, f"Job {job_id} not found")
-    # Return without large data blobs for status polling
-    return {k: v for k, v in job.items() if k != "steps"} | {
-        "steps": {
-            k: {sk: sv for sk, sv in v.items() if sk != "data"}
-            for k, v in job["steps"].items()
-        }
+    return {k: v for k, v in job.items() if k not in ("steps", "_cancel_requested")} | {
+        "steps": {k: {sk: sv for sk, sv in v.items() if sk != "data"} for k, v in job["steps"].items()}
     }
 
 
@@ -98,7 +126,18 @@ async def get_job_full(job_id: str):
     job = JOB_STORE.get(job_id)
     if not job:
         raise HTTPException(404, f"Job {job_id} not found")
-    return job
+    return {k: v for k, v in job.items() if k != "_cancel_requested"}
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    job = JOB_STORE.get(job_id)
+    if not job:
+        raise HTTPException(404, f"Job {job_id} not found")
+    if job["status"] not in ("running",):
+        raise HTTPException(400, f"Job is '{job['status']}' and cannot be cancelled")
+    job["_cancel_requested"] = True
+    return {"job_id": job_id, "cancel_requested": True}
 
 
 @router.delete("/jobs/{job_id}")
@@ -106,8 +145,8 @@ async def delete_job(job_id: str):
     if job_id not in JOB_STORE:
         raise HTTPException(404, f"Job {job_id} not found")
     del JOB_STORE[job_id]
-    # Remove disk files
-    for ext in ["json", "pdf"]:
+    db.delete_job(job_id)
+    for ext in ["pdf"]:
         p = Path(config.OUTPUT_DIR) / f"job_{job_id}.{ext}"
         if p.exists():
             p.unlink()
@@ -124,18 +163,67 @@ async def download_pdf(job_id: str):
 
     pdf_path = str(Path(config.OUTPUT_DIR) / f"job_{job_id}.pdf")
 
-    # Generate if not cached
     if not Path(pdf_path).exists():
         try:
             generate_pdf(job, pdf_path)
         except Exception as e:
+            log.exception("PDF generation failed for job %s", job_id)
             raise HTTPException(500, f"PDF generation failed: {e}")
 
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        filename=f"PhyloGenie_{job_id}.pdf"
+    return FileResponse(pdf_path, media_type="application/pdf", filename=f"PhyloGenie_{job_id}.pdf")
+
+
+@router.get("/jobs/{job_id}/json")
+async def download_json(job_id: str):
+    job = JOB_STORE.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    clean = {k: v for k, v in job.items() if k != "_cancel_requested"}
+    return JSONResponse(
+        content=clean,
+        headers={"Content-Disposition": f'attachment; filename="PhyloGenie_{job_id}.json"'},
     )
+
+
+class SequenceRequest(BaseModel):
+    accession: str
+
+
+@router.post("/sequence/retrieve")
+async def retrieve_sequence(req: SequenceRequest):
+    """Quick single-sequence lookup — bypasses the full pipeline (seconds, not minutes)."""
+    try:
+        accession = validate_accession(req.accession)
+    except ValidationError as e:
+        raise HTTPException(400, str(e))
+    try:
+        result = await fetch_sequence(accession)
+    except Exception as e:
+        raise HTTPException(502, f"NCBI retrieval failed: {e}")
+    return {k: v for k, v in result.items() if k != "fasta"} | {"fasta": result.get("fasta", "")}
+
+
+class BlastRequest(BaseModel):
+    sequence: str
+    program: str = "blastn"  # blastn | blastp
+
+
+@router.post("/blast")
+async def standalone_blast(req: BlastRequest):
+    """Run a standalone BLAST search against a pasted sequence (no job/pipeline)."""
+    seq = req.sequence.strip().upper()
+    if not seq:
+        raise HTTPException(400, "sequence is required")
+    if len(seq) > 5000:
+        raise HTTPException(400, "sequence too long for standalone BLAST (max 5000 chars) — use a full pipeline job instead")
+
+    if req.program == "blastp":
+        result = await run_blastp(seq, gene_id="standalone")
+    elif req.program == "blastn":
+        result = await run_blastn(seq, accession="standalone")
+    else:
+        raise HTTPException(400, "program must be 'blastn' or 'blastp'")
+    return result
 
 
 @router.get("/sample-accessions")

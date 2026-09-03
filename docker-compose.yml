@@ -1,0 +1,21 @@
+services:
+  phylogenie:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - NCBI_EMAIL=${NCBI_EMAIL}
+      - NCBI_API_KEY=${NCBI_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_PATH=/app/db_data/phylogenie.db
+    volumes:
+      - phylogenie_data:/app/outputs
+      - phylogenie_db:/app/db_data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  phylogenie_data:
+  phylogenie_db:

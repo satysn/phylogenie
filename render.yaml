@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: phylogenie
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: NCBI_EMAIL
+        sync: false
+      - key: NCBI_API_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+    disk:
+      name: phylogenie-data
+      mountPath: /opt/render/project/src/outputs
+      sizeGB: 1

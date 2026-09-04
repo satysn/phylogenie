@@ -64,7 +64,7 @@ MAX_CONCURRENT_JOBS = _int("MAX_CONCURRENT_JOBS", 3)
 # ── BLAST settings ──
 BLAST_HITLIST_SIZE = _int("BLAST_HITLIST_SIZE", 20)
 BLAST_EXPECT = float(os.getenv("BLAST_EXPECT", "0.001"))
-BLAST_TIMEOUT_SECONDS = _int("BLAST_TIMEOUT_SECONDS", 180)
+BLAST_TIMEOUT_SECONDS = _int("BLAST_TIMEOUT_SECONDS", 600)
 
 # ── Augustus web API ──
 AUGUSTUS_URL = os.getenv("AUGUSTUS_URL", "https://bioinf.uni-greifswald.de/augustus/submission.php")

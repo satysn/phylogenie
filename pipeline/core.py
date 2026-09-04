@@ -402,7 +402,12 @@ async def run_blastn(sequence: str, accession: str) -> dict:
             log.warning("BLASTN failed for %s: %s", accession, e)
             return {"error": str(e), "hits": [], "query_length": len(sequence), "program": "blastn"}
 
-    return await loop.run_in_executor(None, _blast)
+    try:
+        return await asyncio.wait_for(loop.run_in_executor(None, _blast), timeout=config.BLAST_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        log.warning("BLASTN timed out after %ds for %s", config.BLAST_TIMEOUT_SECONDS, accession)
+        return {"error": f"BLASTN timed out after {config.BLAST_TIMEOUT_SECONDS}s — NCBI web BLAST may be under heavy load",
+                "hits": [], "query_length": len(sequence), "program": "blastn"}
 
 
 # ─────────────────────────────────────────────
@@ -442,7 +447,12 @@ async def run_blastp(protein_seq: str, gene_id: str = "query") -> dict:
             log.warning("BLASTP failed for %s: %s", gene_id, e)
             return {"error": str(e), "hits": [], "program": "blastp"}
 
-    return await loop.run_in_executor(None, _blast)
+    try:
+        return await asyncio.wait_for(loop.run_in_executor(None, _blast), timeout=config.BLAST_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        log.warning("BLASTP timed out after %ds for %s", config.BLAST_TIMEOUT_SECONDS, gene_id)
+        return {"error": f"BLASTP timed out after {config.BLAST_TIMEOUT_SECONDS}s — NCBI web BLAST may be under heavy load",
+                "hits": [], "program": "blastp"}
 
 
 # ─────────────────────────────────────────────

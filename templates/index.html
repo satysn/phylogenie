@@ -9,24 +9,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 :root {
-  /* Pitch-black + bioluminescent-green palette. --blue is kept as the
-     token name (it drives most interactive/accent styling throughout
-     this file) but now carries a phosphorescent green — renaming every
-     .btn-blue/.b-blue/.c-blue usage would be a much larger, riskier diff
-     for the same visual result. --purple is repurposed the same way, as
-     a secondary teal accent. */
+  /* True OLED-black surfaces (neutral grayscale, zero color bias) — green
+     is reserved for accents only: buttons, active states, badges, links,
+     glows. --blue is kept as the token name (it drives most interactive
+     styling throughout this file) but now carries a phosphorescent green
+     — renaming every .btn-blue/.b-blue/.c-blue usage would be a much
+     larger, riskier diff for the same visual result. --purple is
+     repurposed the same way, as a secondary teal accent. */
   --black: #000000;
-  --bg: #040603;
-  --bg2: #070d08;
-  --card: #080f09;
-  --border: #122b1a;
-  --border2: #1c4029;
+  --bg: #000000;
+  --bg2: #0a0a0a;
+  --card: #060606;
+  --border: #1a1a1a;
+  --border2: #272727;
   --blue: #00ff8c;
-  --blue-dim: rgba(0,255,140,0.12);
-  --blue-glow: rgba(0,255,140,0.28);
-  --text: #d6f5e3;
-  --muted: #4d8066;
-  --muted2: #274536;
+  --blue-dim: rgba(0,255,140,0.10);
+  --blue-glow: rgba(0,255,140,0.25);
+  --text: #e8e8e8;
+  --muted: #6b6b6b;
+  --muted2: #3a3a3a;
   --green: #39d97a;
   --red: #ff3d5a;
   --yellow: #ffcc00;

@@ -51,6 +51,16 @@ Path(config.OUTPUT_DIR).mkdir(exist_ok=True, parents=True)
 _JOB_SEMAPHORE = asyncio.Semaphore(max(1, config.MAX_CONCURRENT_JOBS))
 _FETCH_SEMAPHORE = asyncio.Semaphore(4 if config.NCBI_API_KEY else 2)
 
+# BLASTN/BLASTP against NCBI's free web service is the real bottleneck in
+# this pipeline — process time on their end, not something any client can
+# speed up. What we *can* control is how many searches are in flight at
+# once: NCBI's own usage guidelines allow meaningfully higher throughput
+# with an API key, so run a few concurrently when one is configured
+# instead of hard-sequential. This semaphore is shared across all jobs
+# (not per-job) so total concurrent BLAST load against NCBI stays bounded
+# regardless of how many jobs are running.
+_BLAST_SEMAPHORE = asyncio.Semaphore(3 if config.NCBI_API_KEY else 1)
+
 
 class JobCancelled(Exception):
     pass
@@ -713,27 +723,36 @@ async def _run_pipeline_body(job: dict, accessions: list[str], options: dict):
             job_update(job, "augustus", "skipped", 46, "Skipped — disabled for this job", {"skipped": True})
         _check_cancelled(job)
 
-        # ── Step 4: BLASTN (sequential — NCBI rate-limits web BLAST heavily; optional) ──
+        # ── Step 4: BLASTN (bounded concurrency — more parallel with an API key; optional) ──
         if wants("blastn"):
-            job_update(job, "blastn", "running", 48, "Running BLASTN against NCBI nt database...")
-            blastn_results = []
-            for seq in sequences:
-                _check_cancelled(job)
-                bn = await run_blastn(seq["sequence"], seq["accession"])
-                blastn_results.append({"accession": seq["accession"], "result": bn})
-                await asyncio.sleep(1)
+            _check_cancelled(job)
+            n = len(sequences)
+            job_update(job, "blastn", "running", 48, f"Running BLASTN against NCBI nt database (0/{n})...")
+            blastn_results: list = [None] * n
+            done = 0
+
+            async def _do_blastn(i, seq):
+                nonlocal done
+                async with _BLAST_SEMAPHORE:
+                    bn = await run_blastn(seq["sequence"], seq["accession"])
+                    await asyncio.sleep(0.5)  # brief pacing before this slot is reused
+                blastn_results[i] = {"accession": seq["accession"], "result": bn}
+                done += 1
+                job_update(job, "blastn", "running", 48 + round(12 * done / n),
+                           f"Running BLASTN against NCBI nt database ({done}/{n})...")
+
+            await asyncio.gather(*(_do_blastn(i, seq) for i, seq in enumerate(sequences)))
             job_update(job, "blastn", "complete", 60,
                        f"BLASTN complete — {sum(len(r['result'].get('hits', [])) for r in blastn_results)} hits",
                        {"blastn_results": blastn_results})
         else:
             job_update(job, "blastn", "skipped", 60, "Skipped — disabled for this job", {"skipped": True})
 
-        # ── Step 5: BLASTP (use longest ORF/Augustus protein; optional) ──
+        # ── Step 5: BLASTP (bounded concurrency, longest ORF/Augustus protein; optional) ──
         if wants("blastp"):
-            job_update(job, "blastp", "running", 62, "Running BLASTP on predicted proteins...")
-            blastp_results = []
+            _check_cancelled(job)
+            blastp_inputs = []
             for i, seq in enumerate(sequences):
-                _check_cancelled(job)
                 protein = ""
                 orfs = orf_results[i]["result"].get("orfs", [])
                 if orfs:
@@ -741,11 +760,26 @@ async def _run_pipeline_body(job: dict, accessions: list[str], options: dict):
                 aug_genes = augustus_results[i]["result"].get("genes", [])
                 if aug_genes and aug_genes[0].get("protein"):
                     protein = aug_genes[0]["protein"]
-
                 if protein:
-                    bp = await run_blastp(protein, seq["accession"])
-                    blastp_results.append({"accession": seq["accession"], "result": bp})
-                    await asyncio.sleep(1)
+                    blastp_inputs.append((seq["accession"], protein))
+
+            n = len(blastp_inputs)
+            job_update(job, "blastp", "running", 62, f"Running BLASTP on predicted proteins (0/{n})...")
+            blastp_results: list = [None] * n
+            done = 0
+
+            async def _do_blastp(i, accession, protein):
+                nonlocal done
+                async with _BLAST_SEMAPHORE:
+                    bp = await run_blastp(protein, accession)
+                    await asyncio.sleep(0.5)  # brief pacing before this slot is reused
+                blastp_results[i] = {"accession": accession, "result": bp}
+                done += 1
+                job_update(job, "blastp", "running", 62 + round(12 * done / max(n, 1)),
+                           f"Running BLASTP on predicted proteins ({done}/{n})...")
+
+            if blastp_inputs:
+                await asyncio.gather(*(_do_blastp(i, acc, prot) for i, (acc, prot) in enumerate(blastp_inputs)))
             job_update(job, "blastp", "complete", 74,
                        f"BLASTP complete — {sum(len(r['result'].get('hits', [])) for r in blastp_results)} hits",
                        {"blastp_results": blastp_results})

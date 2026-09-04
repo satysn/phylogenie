@@ -901,7 +901,7 @@ async function launch() {
 // ─────────────────────────
 function startPoll(id) {
   if (S.poll) clearInterval(S.poll);
-  S.poll = setInterval(() => pollJob(id), 1500);
+  S.poll = setInterval(() => pollJob(id), 2000);
 }
 
 const STEP_DEFS = [
@@ -918,6 +918,13 @@ const STEP_DEFS = [
 async function pollJob(id) {
   try {
     const r = await fetch(`/api/jobs/${id}`);
+    if (!r.ok) {
+      // Transient error (e.g. rate limiting) — skip this tick rather than
+      // rendering the error body as if it were job data, which would reset
+      // the whole panel to 0%/pending and look like the job had stalled.
+      if (r.status === 429) console.warn('Poll rate-limited, will retry next tick');
+      return;
+    }
     const job = await r.json();
     const pct = job.progress || 0;
     document.getElementById('s-bar').style.width = pct + '%';

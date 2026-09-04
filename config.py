@@ -79,7 +79,12 @@ CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 # ── Rate limiting (requests per minute per client IP) ──
-RATE_LIMIT_PER_MINUTE = _int("RATE_LIMIT_PER_MINUTE", 30)
+# The frontend polls /api/jobs/{id} every 2s (30 req/min) while a job runs,
+# plus occasional history/health calls on top — 30 was too tight and caused
+# the poll's own 429s to visibly reset the progress panel. This still caps
+# obvious abuse/scraping while giving normal single-job polling headroom,
+# including several teammates polling their own jobs behind the same IP.
+RATE_LIMIT_PER_MINUTE = _int("RATE_LIMIT_PER_MINUTE", 120)
 
 
 def validate() -> list[str]:
